@@ -1,0 +1,55 @@
+log_name = "gdk"
+# Optional root level options:
+#
+# root: str = the root of the log store created by log auditor
+#
+
+[logs]
+root = "/tmp/gitlab-development-environment"
+
+    [logs.std]
+    ext = "log"
+    log_prefix = "gitlab/log/"
+    log_names = [
+                    "importer",
+                    "auth",
+                    "development_json",
+                    "gettext",
+                    "grpc",
+                    "api_json",
+                    "sidekiq_client",
+                    "application_json",
+                    "development",
+                    "service_measurement",
+                    "exceptions_json",
+                    "graphql_json",
+                    "audt_json",
+                    "git_json",
+                ]
+    format = "json"
+
+    [logs.gitaly]
+    ext = "log"
+    log_prefix = "log/praefect-gitaly-0/"
+    log_names = [
+                    "gitaly_hooks",
+                    "gitlay_ruby_json"
+                ]
+    format = "json"
+
+    [logs.jobs]
+    ext = "log"
+    log_prefix = "gitlab/shared/artifacts"
+    format = "string"
+
+[schema]
+key = "application_json.log"
+key_type = "file"
+relator = "correlation_id"
+lookup = ["correlation_id"]
+    [schema.project]
+    relator = "project_id"
+    lookup = ["project_id"]
+        [schema.project.job]
+        relator = "job_id"
+        lookup = ["project_id", "runner_id"]
