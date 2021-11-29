@@ -1,17 +1,10 @@
 import argparse
-import os
 import sys
-import threading
 import toml
-import glob
-import os
-from typing import Any, List, MutableMapping
+from typing import Any, List
 
 from . import alog
 
-
-def cl_handler(live: bool):
-    pass
 
 def main(argv: List[Any] = None):
     args = argparse.ArgumentParser(description="Aggregate and Stream Logs")
@@ -28,12 +21,30 @@ def main(argv: List[Any] = None):
         "-d",
         action="store",
         required=False,
+        default=False,
         help="Run Audit Logger in the background"
     )
+    args.add_argument(
+        "-f",
+        "--feed",
+        action='store',
+        dest="feed",
+        required=False,
+        default=False
+    )
+    args.add_argument(
+        "-C",
+        action='store',
+    )
     cmd_line = args.parse_args(argv if argv else sys.argv[1:])
-    toml_logger_conf = toml.load(cmd_line.conf)
-    logs, log_attrs = alog.build_and_validate_logs(toml_logger_conf)
-    alog.start_logging(logs, log_attrs, cl_handler=cl_handler)
+    if cmd_line.command_mode:
+        for rsp in alog.client(cmd_line.queries):
+            print(rsp)
+
+    else:
+        toml_logger_conf = toml.load(cmd_line.conf)
+        logs, log_attrs = alog.build_logs(toml_logger_conf)
+        alog.start_logging(logs, log_attrs)
 
 
 if __name__ == '__main__':

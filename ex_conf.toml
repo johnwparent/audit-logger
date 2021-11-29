@@ -1,12 +1,10 @@
 log_name = "gdk"
 # Optional root level options:
 #
-# root: str = the root of the log store created by log auditor
-#
-
+# root: str= the root of the log store created by log auditor
+# tail: bool= if specified, logs will be tailed, rather than head
 [logs]
 root = "/tmp/gitlab-development-environment"
-
     [logs.std]
     ext = "log"
     log_prefix = "gitlab/log/"
@@ -46,10 +44,9 @@ root = "/tmp/gitlab-development-environment"
 key = "application_json.log"
 key_type = "file"
 relator = "correlation_id"
-lookup = ["correlation_id"]
     [schema.project]
-    relator = "project_id"
     lookup = ["project_id"]
-        [schema.project.job]
-        relator = "job_id"
-        lookup = ["project_id", "runner_id"]
+        [schema.project.pipeline]
+            lookup = ["pipeline_id"]
+            [schema.project.pipeline.job]
+            lookup = ["job_id", "runner_id"]
