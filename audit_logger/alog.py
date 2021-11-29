@@ -263,7 +263,7 @@ class Logger(object):
                     daemon.capture_message(new_message)
 
 
-class LoadManager(object):
+class AuditManager(object):
     """
     Reads from log aggregation endpoint, indexes and provides
     storage for the logs, as well as a runtime interface to query the logs.
@@ -361,6 +361,11 @@ def reset_sys_fd():
     sys.stderr = sys.__stderr__ = open("/dev/null", "w")
 
 
+pid_path = os.path.join(os.environ.get("HOME"),
+                                ".audit_logger",
+                                "pidfile")
+
+
 def write_pid_file():
     """
     Write Audit Logger PID file
@@ -368,16 +373,20 @@ def write_pid_file():
     and ensuring only one Audit Logger process is running
     at a time.
     """
-    pid_path = os.path.join(os.environ.get("HOME"),
-                            ".audit_logger",
-                            "pidfile")
-    if os.path.isfile(pid_path):
+    if is_already_active(pid_path):
         with open(pid_path, 'r') as pidf:
             other_pid = pidf.read()
         raise AuditLoggerError("There is already a running instance of Audit Logger. Please kill this instance at %s before starting a new one." % other_pid)
     with open(pid_path, 'w+') as f:
         f.write(os.getpid())
 
+def is_already_active():
+    """
+    Check to determine if there is already an active instance of Audit Logger running in the background
+    """
+    if os.path.isfile(pid_path):
+        return True
+    return False
 
 def clean_pid_file():
     """
@@ -435,25 +444,25 @@ def start_logging(logs: List[Logger], log_attrs: List[str], detached:bool= True)
             __loggers_stop = True
             notifier.notify_all()
     logdaemon = LoggerDaemon(threading.RLock())
-    lm = LoadManager(logdaemon)
+    am = AuditManager(logdaemon)
     listener = Listener(('127.0.0.1','6600'), authkey=os.environ.get("AUDIT_LOGGER_AUTH",b'auditlogger'))
     notifier = threading.Condition(threading.Lock())
     tp = []
     for log in logs:
         tp.append(threading.Thread(target=log.start_logging, args=[notifier, logdaemon]))
         tp[-1].start()
-    lm.start()
+    am.start()
     try:
         while():
                 with listener.accept() as conn:
                     query = conn.recv()
                     if query.stop:
                         break
-                    conn.send(lm.query(query))
+                    conn.send(am.query(query))
     finally:
         # effect graceful exit
         interrupt(notifier)
-        lm.stop()
+        am.stop()
         listener.close()
         for thread in tp:
             thread.join()

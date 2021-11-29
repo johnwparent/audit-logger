@@ -8,7 +8,9 @@ from . import alog
 
 def main(argv: List[Any] = None):
     args = argparse.ArgumentParser(description="Aggregate and Stream Logs")
-    args.add_argument(
+    sub_cmds = args.add_subparsers()
+    c1 = sub_cmds.add_parser("start", help='start Audit Logger')
+    c1.add_argument(
         "--config",
         action="store",
         dest="conf",
@@ -16,35 +18,43 @@ def main(argv: List[Any] = None):
         help="Config file designating logs to aggregate\
             and streaming destination"
     )
-    args.add_argument(
+    c1.add_argument(
         "--detached",
         "-d",
         action="store",
         required=False,
-        default=False,
+        default=True,
+        dest='detached',
         help="Run Audit Logger in the background"
     )
-    args.add_argument(
-        "-f",
-        "--feed",
-        action='store',
-        dest="feed",
-        required=False,
-        default=False
-    )
-    args.add_argument(
-        "-C",
-        action='store',
-    )
-    cmd_line = args.parse_args(argv if argv else sys.argv[1:])
-    if cmd_line.command_mode:
-        for rsp in alog.client(cmd_line.queries):
-            print(rsp)
+    c1.set_defaults(command_mode=False)
 
+    c2 = sub_cmds.add_parser("C", help="Issue queries to Audit system")
+    c2.add_argument('-Q',action='append',dest='queries')
+    c2.set_defaults(command_mode=True)
+    c2.set_defaults(status=False)
+
+    c3 = sub_cmds.add_parser("status", help="Status of Audit System")
+    c3.set_defaults(status=True)
+    c3.set_defaults(command_mode=False)
+
+    cmd_line = args.parse_args(argv if argv else sys.argv[1:])
+
+    if cmd_line.command_mode:
+        if alog.is_already_active():
+            for rsp in alog.client([alog.Query(query) for query in cmd_line.queries]):
+                print(rsp)
+        else:
+            raise alog.AuditLoggerError("Cannot issue query if no instance of Audit Logger is running")
+    elif cmd_line.status:
+        if alog.is_already_active():
+            print("Audit Logger is active and running in the background.")
+        else:
+            print("Audit Logger is not active.")
     else:
         toml_logger_conf = toml.load(cmd_line.conf)
         logs, log_attrs = alog.build_logs(toml_logger_conf)
-        alog.start_logging(logs, log_attrs)
+        alog.start_logging(logs, log_attrs, cmd_line.detached)
 
 
 if __name__ == '__main__':
