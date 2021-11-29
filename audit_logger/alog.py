@@ -380,6 +380,7 @@ def write_pid_file():
     with open(pid_path, 'w+') as f:
         f.write(os.getpid())
 
+
 def is_already_active():
     """
     Check to determine if there is already an active instance of Audit Logger running in the background
@@ -387,6 +388,7 @@ def is_already_active():
     if os.path.isfile(pid_path):
         return True
     return False
+
 
 def clean_pid_file():
     """
