@@ -8,7 +8,7 @@ from . import alog
 
 def main(argv: List[Any] = None):
     args = argparse.ArgumentParser(description="Aggregate and Stream Logs")
-    sub_cmds = args.add_subparsers()
+    sub_cmds = args.add_subparsers(required=True)
     c1 = sub_cmds.add_parser("start", help='start Audit Logger')
     c1.add_argument(
         "--config",
@@ -28,6 +28,7 @@ def main(argv: List[Any] = None):
         help="Run Audit Logger in the background"
     )
     c1.set_defaults(command_mode=False)
+    c1.set_defaults(status=False)
 
     c2 = sub_cmds.add_parser("C", help="Issue queries to Audit system")
     c2.add_argument('-Q',action='append',dest='queries')
@@ -38,7 +39,9 @@ def main(argv: List[Any] = None):
     c3.set_defaults(status=True)
     c3.set_defaults(command_mode=False)
 
-    cmd_line = args.parse_args(argv if argv else sys.argv[1:])
+    if not argv:
+        argv = sys.argv[1:] if sys.argv[1:] else ['None']
+    cmd_line = args.parse_args(argv)
 
     if cmd_line.command_mode:
         if alog.is_already_active():

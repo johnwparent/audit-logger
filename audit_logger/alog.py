@@ -360,10 +360,10 @@ def reset_sys_fd():
     sys.stdout = sys.__stdout__ = open("/dev/null", "w")
     sys.stderr = sys.__stderr__ = open("/dev/null", "w")
 
+pid_root = os.path.join(os.environ.get("HOME"),
+                                ".audit_logger")
 
-pid_path = os.path.join(os.environ.get("HOME"),
-                                ".audit_logger",
-                                "pidfile")
+pid_path = os.path.join(pid_root, "pidfile")
 
 
 def write_pid_file():
@@ -373,12 +373,14 @@ def write_pid_file():
     and ensuring only one Audit Logger process is running
     at a time.
     """
-    if is_already_active(pid_path):
+    if is_already_active():
         with open(pid_path, 'r') as pidf:
             other_pid = pidf.read()
         raise AuditLoggerError("There is already a running instance of Audit Logger. Please kill this instance at %s before starting a new one." % other_pid)
+    if not os.path.isdir(pid_root):
+        os.makedirs(pid_root)
     with open(pid_path, 'w+') as f:
-        f.write(os.getpid())
+        f.write(str(os.getpid()))
 
 
 def is_already_active():
@@ -395,10 +397,8 @@ def clean_pid_file():
     Cleanun PID file after program is finished with execution.
     """
     try:
-        os.remove(os.path.join(os.environ.get("HOME"),
-              ".audit_logger",
-              "pidfile")
-            )
+        os.remove(pid_path)
+
     except FileNotFoundError:
         return
 
@@ -409,12 +409,11 @@ def daemonize():
     """
     pid = os.fork()
     if pid != 0:
-        exit(pid > 0)
-    else:
-        reset_sys_fd()
-        write_pid_file()
-        os.umask(0)
-        os.setsid()
+        os._exit(pid > 0)
+
+    reset_sys_fd()
+    os.umask(0)
+    os.setsid()
 
 
 def client(*queries: List[Query]):
@@ -437,24 +436,24 @@ def start_logging(logs: List[Logger], log_attrs: List[str], detached:bool= True)
     Initite Logging process.
     If detached is true, process is daemonized.
     """
-    if detached:
-        daemonize()
-        write_pid_file()
+    # if detached:
+    #     daemonize()
+    #     write_pid_file()
 
     def interrupt(notifier: threading.Condition):
         with notifier:
             __loggers_stop = True
             notifier.notify_all()
-    logdaemon = LoggerDaemon(threading.RLock())
-    am = AuditManager(logdaemon)
-    listener = Listener(('127.0.0.1','6600'), authkey=os.environ.get("AUDIT_LOGGER_AUTH",b'auditlogger'))
-    notifier = threading.Condition(threading.Lock())
-    tp = []
-    for log in logs:
-        tp.append(threading.Thread(target=log.start_logging, args=[notifier, logdaemon]))
-        tp[-1].start()
-    am.start()
     try:
+        logdaemon = LoggerDaemon(threading.RLock())
+        am = AuditManager(logdaemon)
+        listener = Listener(('127.0.0.1','6600'), authkey=os.environ.get("AUDIT_LOGGER_AUTH",b'auditlogger'))
+        notifier = threading.Condition(threading.Lock())
+        tp = []
+        for log in logs:
+            tp.append(threading.Thread(target=log.start_logging, args=[notifier, logdaemon]))
+            tp[-1].start()
+        am.start()
         while():
                 with listener.accept() as conn:
                     query = conn.recv()
@@ -478,7 +477,7 @@ def build_logs(conf: MutableMapping[str, Any]):
     file.
     """
     attributes = []
-    attributes.append(name = conf["log_name"])
+    attributes.append(conf["log_name"])
     root = conf.get("root", os.path.join(os.environ.get("HOME"), ".logaudit", "store"))
     attributes.append(root)
     logs = conf.get("logs", None)
