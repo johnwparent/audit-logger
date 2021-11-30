@@ -102,7 +102,7 @@ class Message(object):
         attr = self.parsed_content.get(__name)
         if attr:
             return attr
-        return super().__getattribute__(__name)
+        return None
 
 
 class Schema(object):
@@ -118,6 +118,7 @@ class Schema(object):
         self.root = root
         self.key_type = schema['key_type']
         self.relator = [schema['relator']]
+        self.key_attributes = schema.get('key_attributes')
         self.lookup_keys = []
         self.root_key = (schema.keys() - set(['key', 'key_type', 'relator'])).pop()
         schema_root = schema[self.root_key]
@@ -147,6 +148,12 @@ class Schema(object):
         """
         return os.path.join(self.root, *[msg.__getattribute__(item) for item in self.file_schema], "aggregate.log")
 
+    def check_keys(self, *attrs: List):
+        if self.key_attributes:
+            if (set(self.key_attributes) - set(attrs)):
+                return False
+        return True
+
     def file_check(self, file_name, *attrs: List):
         """
         Check if message is key based on file name as key
@@ -163,9 +170,9 @@ class Schema(object):
         """
         Check if message is key based on schema defined criteria
         """
-        return self._key_check(file_name, info.keys())
+        return self._key_check(file_name, info.keys()) and self.check_keys(info.keys())
 
-    def log_glob_lookup(self, query):
+    def lookup(self, query):
         """
         On message search, return a glob for logs specified by query
         """
@@ -303,6 +310,7 @@ class AuditManager(object):
                 with lock_access(self.__r_w_lock):
                     nxt_msg = op()
                 if nxt_msg:
+                    nxt_corr = nxt_msg.__getattribute__(self.schema.relator)
                     if self.schema.key_check(nxt_msg):
                         msg_pth = self.schema.compute_path(nxt_msg)
                         file_op = 'a'
@@ -311,20 +319,21 @@ class AuditManager(object):
 
                         with open(msg_pth, file_op) as f:
                             f.write(nxt_msg)
-                            if nxt_msg.correlation_id not in self.local_store:
-                                self.local_store[nxt_msg.correlation_id] = f.name
+                            if nxt_corr not in self.local_store:
+                                self.local_store[nxt_corr] = f.name
                             else:
-                                for log in self.local_store[nxt_msg.correlation_id]:
+                                for log in self.local_store[nxt_corr]:
                                     f.write(log)
-                                self.local_store[nxt_msg.correlation_id] = f.name
+                                self.local_store[nxt_corr] = f.name
                     else:
-                        if nxt_msg.correlation_id:
-                            if nxt_msg.correlation_id not in self.local_store:
-                                self.local_store[nxt_msg.correlation_id] = [nxt_msg]
-                            elif type(self.local_store[nxt_msg.correlation_id][0]) == Message:
-                                self.local_store[nxt_msg.correlation_id].append(nxt_msg)
+                        if nxt_corr:
+                            if nxt_corr not in self.local_store:
+                                self.local_store[nxt_corr] = [nxt_msg]
+                            elif self.local_store[nxt_corr] and \
+                                type(self.local_store[nxt_corr][0]) == Message:
+                                self.local_store[nxt_corr].append(nxt_msg)
                             else:
-                                with open(self.local_store[nxt_msg.correlation_id], 'a') as f:
+                                with open(self.local_store[nxt_corr], 'a') as f:
                                     f.write(nxt_msg)
 
     def start(self):

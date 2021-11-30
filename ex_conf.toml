@@ -43,6 +43,7 @@ root = "/tmp/gitlab-development-environment"
 [schema]
 key = "application_json.log"
 key_type = "file"
+key_attributes = ['job_id', 'project_id', 'pipeline_id', 'runner']
 relator = "correlation_id"
     [schema.project]
     lookup = ["project_id"]
