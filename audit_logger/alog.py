@@ -58,8 +58,12 @@ class Query(object):
     def __init__(self, query):
         self.query = query
         self.__parse()
+        self.STOP = False
 
     def __parse(self):
+        if self.query == 'STOP':
+            self.STOP = True
+            return
         queries = self.query.split(';')
         for query in queries:
             key, val = query.split('=')
@@ -108,15 +112,17 @@ class Schema(object):
     messages via defined attributes to arrgegate log files in specified
     directories
     """
-    def __init__(self, schema: MutableMapping[str, Any]):
+    def __init__(self, schema: MutableMapping[str, Any], name: str, root: str):
         self.key = schema['key']
+        self.name = name
+        self.root = root
         self.key_type = schema['key_type']
         self.relator = [schema['relator']]
         self.lookup_keys = []
-        self.root_key = (schema.keys() - set('key', 'key_type', 'relator')).pop()
+        self.root_key = (schema.keys() - set(['key', 'key_type', 'relator'])).pop()
         schema_root = schema[self.root_key]
         self.file_schema = [self.root_key]
-        self.attribute_keys = set('relator','lookup')
+        self.attribute_keys = set(['relator','lookup'])
         self._key_check = self.attribute_check
         self.__process_structure(schema_root)
         self.__process_lookup_schema()
@@ -127,16 +133,19 @@ class Schema(object):
 
     def __process_structure(self, schema_root: MutableMapping[str, Any]):
         self.lookup_keys.extend(schema_root['lookup'])
-        next_key = (schema_root.keys() - self.attribute_keys).pop()
-        if next_key and schema_root[next_key]:
-            self.file_schema.append(next_key)
+        try:
+            next_key = (schema_root.keys() - self.attribute_keys).pop()
+            if next_key and schema_root[next_key]:
+                self.file_schema.append(next_key)
             self.__process_structure(schema_root[next_key])
+        except KeyError:
+            return
 
     def compute_path(self, msg: Message):
         """
         Process and return Messages's schema location in the filesystem
         """
-        return os.path.join(*[msg.__getattribute__(item) for item in self.file_schema], "aggregate.log")
+        return os.path.join(self.root, *[msg.__getattribute__(item) for item in self.file_schema], "aggregate.log")
 
     def file_check(self, file_name, *attrs: List):
         """
@@ -278,7 +287,7 @@ class AuditManager(object):
         self.schema = schema
         self.root = schema.root
 
-    def __process_logs(self, message: Message):
+    def __process_logs(self):
         """
         Read messages from the connected endpoint.
         Store in local FS in structure defined by user schema
@@ -431,7 +440,7 @@ def client(*queries: List[Query]):
     return rsp
 
 
-def start_logging(logs: List[Logger], log_attrs: List[str], detached:bool= True):
+def start_logging(logs: List[Logger], schema: Schema, detached:bool= True):
     """
     Initite Logging process.
     If detached is true, process is daemonized.
@@ -445,29 +454,29 @@ def start_logging(logs: List[Logger], log_attrs: List[str], detached:bool= True)
             __loggers_stop = True
             notifier.notify_all()
     try:
-        logdaemon = LoggerDaemon(threading.RLock())
-        am = AuditManager(logdaemon)
-        listener = Listener(('127.0.0.1','6600'), authkey=os.environ.get("AUDIT_LOGGER_AUTH",b'auditlogger'))
+        listener = Listener(('127.0.0.1',6600), authkey=os.environ.get("AUDIT_LOGGER_AUTH",b'auditlogger'))
         notifier = threading.Condition(threading.Lock())
+        logdaemon = LoggerDaemon(threading.RLock())
+        am = AuditManager(logdaemon, schema)
         tp = []
         for log in logs:
             tp.append(threading.Thread(target=log.start_logging, args=[notifier, logdaemon]))
             tp[-1].start()
         am.start()
-        while():
+        while(True):
                 with listener.accept() as conn:
                     query = conn.recv()
-                    if query.stop:
+                    if query.STOP:
                         break
                     conn.send(am.query(query))
     finally:
         # effect graceful exit
+        clean_pid_file()
         interrupt(notifier)
         am.stop()
         listener.close()
         for thread in tp:
             thread.join()
-        clean_pid_file()
         exit(0)
 
 
@@ -476,13 +485,11 @@ def build_logs(conf: MutableMapping[str, Any]):
     Constructs and returns log objects based on settings established in config
     file.
     """
-    attributes = []
-    attributes.append(conf["log_name"])
+    name = conf["log_name"]
     root = conf.get("root", os.path.join(os.environ.get("HOME"), ".logaudit", "store"))
-    attributes.append(root)
     logs = conf.get("logs", None)
     if not logs:
-        raise RuntimeError("ParseError: Logs attribute required, not found")
+        raise AuditLoggerError("ParseError: Logs attribute required, not found")
     full_logs = []
     for l in logs:
         if type(logs[l]) is dict:
@@ -498,4 +505,8 @@ def build_logs(conf: MutableMapping[str, Any]):
             gen_log = lambda x: Logger(x, os.path.join(log_prefix,x,log_extension), log_format)
             pylogs = [x for x in map(gen_log, log_names)]
             full_logs.extend(pylogs)
-    return full_logs, attributes
+    schema_conf = conf.get("schema")
+    if not schema_conf:
+        raise AuditLoggerError("ParseError: Improperly formatted conf, a schema is required")
+    schema = Schema(schema_conf, name, root)
+    return full_logs, schema

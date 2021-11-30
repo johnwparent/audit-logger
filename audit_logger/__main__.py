@@ -1,4 +1,5 @@
 import argparse
+from posixpath import commonpath
 import sys
 import toml
 from typing import Any, List
@@ -29,15 +30,23 @@ def main(argv: List[Any] = None):
     )
     c1.set_defaults(command_mode=False)
     c1.set_defaults(status=False)
+    c1.set_defaults(stop=False)
 
     c2 = sub_cmds.add_parser("C", help="Issue queries to Audit system")
     c2.add_argument('-Q',action='append',dest='queries')
     c2.set_defaults(command_mode=True)
     c2.set_defaults(status=False)
+    c2.set_defaults(stop=False)
 
     c3 = sub_cmds.add_parser("status", help="Status of Audit System")
     c3.set_defaults(status=True)
     c3.set_defaults(command_mode=False)
+    c3.set_defaults(stop=False)
+
+    c4 = sub_cmds.add_parser("stop", help="Stop audit logger from running")
+    c4.set_defaults(status=False)
+    c4.set_defaults(command_mode=False)
+    c4.set_defaults(stop=True)
 
     if not argv:
         argv = sys.argv[1:] if sys.argv[1:] else ['None']
@@ -54,10 +63,15 @@ def main(argv: List[Any] = None):
             print("Audit Logger is active and running in the background.")
         else:
             print("Audit Logger is not active.")
+    elif cmd_line.stop:
+        if not alog.is_already_active():
+            print("Audit Logger is already not active.")
+        else:
+            exit(alog.client(["STOP"]))
     else:
         toml_logger_conf = toml.load(cmd_line.conf)
-        logs, log_attrs = alog.build_logs(toml_logger_conf)
-        alog.start_logging(logs, log_attrs, cmd_line.detached)
+        logs, schema = alog.build_logs(toml_logger_conf)
+        alog.start_logging(logs, schema, cmd_line.detached)
 
 
 if __name__ == '__main__':
