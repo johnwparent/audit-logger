@@ -403,7 +403,7 @@ def is_already_active():
 
 def clean_pid_file():
     """
-    Cleanun PID file after program is finished with execution.
+    Cleanup PID file after program is finished with execution.
     """
     try:
         os.remove(pid_path)
