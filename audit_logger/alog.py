@@ -431,7 +431,7 @@ def client(*queries: List[Query]):
     submit queries, then block on response.
     Returns list of QueryResponse objects
     """
-    client = Client(('127.0.0.1', '6600'), authkey=os.environ.get("AUDIT_LOGGER_AUTH",b'auditlogger'))
+    client = Client(('127.0.0.1', 6600), authkey=os.environ.get("AUDIT_LOGGER_AUTH",b'auditlogger'))
     rsp = []
     for query in queries:
         client.send(query)
@@ -445,9 +445,9 @@ def start_logging(logs: List[Logger], schema: Schema, detached:bool= True):
     Initite Logging process.
     If detached is true, process is daemonized.
     """
-    # if detached:
-    #     daemonize()
-    #     write_pid_file()
+    if detached:
+        daemonize()
+        write_pid_file()
 
     def interrupt(notifier: threading.Condition):
         with notifier:
@@ -467,6 +467,7 @@ def start_logging(logs: List[Logger], schema: Schema, detached:bool= True):
                 with listener.accept() as conn:
                     query = conn.recv()
                     if query.STOP:
+                        conn.send(0)
                         break
                     conn.send(am.query(query))
     finally:
