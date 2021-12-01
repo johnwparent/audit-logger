@@ -60,7 +60,8 @@ def main(argv: List[Any] = None):
             raise alog.AuditLoggerError("Cannot issue query if no instance of Audit Logger is running")
     elif cmd_line.status:
         if alog.is_already_active():
-            print("Audit Logger is active and running in the background.")
+            print("Audit Logger is active and running (pid: %i) in the background at with status: %s"
+            % alog.get_pid(), alog.get_active_status())
         else:
             print("Audit Logger is not active.")
     elif cmd_line.stop:

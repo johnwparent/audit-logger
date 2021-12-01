@@ -266,7 +266,7 @@ class Logger(object):
         Start reading from designated log file, determining when a file has new info to be read, and
         processing new log entry into Message objects, to be sent to Audit Manager accesible endpoint
         """
-        while():
+        while(True):
             with monitor:
                 if __loggers_stop:
                     return
@@ -399,6 +399,27 @@ def write_pid_file():
         os.makedirs(pid_root)
     with open(pid_path, 'w+') as f:
         f.write(str(os.getpid()))
+
+
+def get_pid():
+    """
+    Get PID of active Audit Logger process
+    """
+    if not is_already_active():
+        raise AuditLoggerError('Cannot get PID of non existant process!')
+    with open(pid_path, 'r') as f:
+        pid = f.read().strip().strip('\n')
+    return pid
+
+
+def get_active_status():
+    """
+    Get system status of background Audit Logger process
+    """
+    if not is_already_active():
+        raise AuditLoggerError('Cannot get status of non existant process!')
+    with open("/proc/%d/status" % int(get_pid())) as stat_file:
+        return [ln for ln in stat_file.readlines() if 'State:' in ln][0]
 
 
 def is_already_active():
