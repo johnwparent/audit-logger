@@ -66,13 +66,13 @@ def main(argv: List[Any] = None):
             print("Audit Logger is not active.")
     elif cmd_line.stop:
         if not alog.is_already_active():
-            print("Audit Logger is already not active.")
+            print("Audit Logger is not currently active.")
         else:
             exit(alog.client(["STOP"]))
     else:
         toml_logger_conf = toml.load(cmd_line.conf)
-        logs, schema = alog.build_logs(toml_logger_conf)
-        alog.start_logging(logs, schema, cmd_line.detached)
+        logs, schema, opts = alog.build_logs(toml_logger_conf)
+        alog.start_logging(logs, schema, opts, cmd_line.detached)
 
 
 if __name__ == '__main__':

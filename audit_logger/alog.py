@@ -7,7 +7,15 @@ import sys
 import threading
 
 from multiprocessing.connection import Client, Listener
-from typing import Any, Callable, Dict, List, MutableMapping, Optional, TextIO
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    MutableMapping,
+    Optional,
+    TextIO
+)
 
 
 __loggers_stop = False
@@ -29,54 +37,6 @@ class AuditLoggerError(RuntimeError):
     Wrapper around traditional RuntimeError
     """
     pass
-
-
-class QueryResponse(object):
-    """
-    Representation of response from Log Auditor
-    with all log messages matching the requested attributes
-    """
-    def __init__(self, messages):
-        self.messages = messages
-
-    def genereate_response(self):
-        return "\n".join(self.messages)
-
-
-class Query(object):
-    """
-    A user created query specified by CL. Defined by schema:
-    <log_attibute>=<value>
-
-    or
-
-    <log_attribute>.<log_attribute>=<value>
-    ... etc.
-    Multiple values can be chanined by ';' or multiple
-    command line arguments to '-Q'
-    """
-    def __init__(self, query):
-        self.query = query
-        self.__parse()
-        self.STOP = False
-
-    def __parse(self):
-        if self.query == 'STOP':
-            self.STOP = True
-            return
-        queries = self.query.split(';')
-        for query in queries:
-            key, val = query.split('=')
-            self.__setattr__(key, val)
-
-    def get(self, attribute):
-        """
-        Aquire terms from Query
-        """
-        attr = self.__dict__.get(attribute)
-        if attr:
-            return attr
-        return self.attribute
 
 
 class LogMetaData(dict):
@@ -105,6 +65,53 @@ class Message(object):
         return None
 
 
+class Query(object):
+    """
+    A user created query specified by CL. Defined by schema:
+    <log_attibute>=<value>
+
+    or
+
+    <log_attribute>.<log_attribute>=<value>
+    ... etc.
+    Multiple values can be chanined by ';' or multiple
+    command line arguments to '-Q'
+    """
+    def __init__(self, query: str):
+        self.query = query
+        self.__parse()
+        self.STOP = False
+
+    def __parse(self):
+        if self.query == 'STOP':
+            self.STOP = True
+            return
+        queries = self.query.split(';')
+        for query in queries:
+            key, val = query.split('=')
+            self.__setattr__(key, val)
+
+    def get(self, attribute: str):
+        """
+        Aquire terms from Query
+        """
+        attr = self.__dict__.get(attribute)
+        if attr:
+            return attr
+        return self.attribute
+
+class QueryResponse(object):
+    """
+    Representation of response from Log Auditor
+    with all log messages matching the requested attributes
+    """
+    def __init__(self, messages: Message):
+        self.messages = messages
+
+    def genereate_response(self):
+        return "\n".join(self.messages)
+
+
 class Schema(object):
     """
     Representation of the audited log schema on the local filesystem
@@ -112,10 +119,9 @@ class Schema(object):
     messages via defined attributes to arrgegate log files in specified
     directories
     """
-    def __init__(self, schema: MutableMapping[str, Any], name: str, root: str):
+    def __init__(self, schema: MutableMapping[str, Any], name: str):
         self.key = schema['key']
         self.name = name
-        self.root = root
         self.key_type = schema['key_type']
         self.relator = [schema['relator']]
         self.key_attributes = schema.get('key_attributes')
@@ -192,6 +198,8 @@ class LoggerDaemon(object):
 
     Holds a queue of log messages to be processed
     FIFO
+
+    Essentially a thread safe FIFO Queue with a custom API
     """
     def __init__(self, lock: threading.Lock):
         self.__q_lock = lock
@@ -284,15 +292,15 @@ class AuditManager(object):
     Reads from log aggregation endpoint, indexes and provides
     storage for the logs, as well as a runtime interface to query the logs.
     """
-    def __init__(self, endpoint: LoggerDaemon, schema: Schema):
+    def __init__(self, endpoint: LoggerDaemon, schema: Schema, root: str, tail: bool):
         self.__r_w_lock = threading.RLock()
         self.__p_thread = threading.Thread(target=self.__process_logs)
         self.endpoint = endpoint
         self.__p_stop = False
-        self.tail = False
         self.local_store = {}
         self.schema = schema
-        self.root = schema.root
+        self.root = root
+        self.tail = tail
 
     def __process_logs(self):
         """
@@ -355,16 +363,22 @@ class AuditManager(object):
         Return a list of log Messages, wrapped in QueryResponse
         objects for convenience
         """
-        log_collection = []
         if query.get(self.schema.relator):
             log_files = [self.local_store[query.get(self.schema.relator)]]
         else:
             log_files = glob.glob(os.path.join(self.root, self.schema.lookup(query)))
-        for file in log_files:
-            json_log = json.load(file)
-            for log_entry in json_log:
-                log_collection.append(Message(json_log[log_entry]))
-        return QueryResponse(log_collection)
+        return log_files
+
+
+def drive_query(am: AuditManager, query: Query, timeout: float):
+    log_files = am.query(query)
+    log_collection = []
+
+    for file in log_files:
+        json_log = json.load(open(file, 'r'))
+        for log_entry in json_log:
+            log_collection.append(Message(json_log[log_entry]))
+    return QueryResponse(log_collection)
 
 
 def reset_sys_fd():
@@ -394,7 +408,9 @@ def write_pid_file():
     if is_already_active():
         with open(pid_path, 'r') as pidf:
             other_pid = pidf.read()
-        raise AuditLoggerError("There is already a running instance of Audit Logger. Please kill this instance at %s before starting a new one." % other_pid)
+        raise AuditLoggerError("There is already a running instance of \
+                                Audit Logger. Please kill this instance at \
+                                %s before starting a new one." % other_pid)
     if not os.path.isdir(pid_root):
         os.makedirs(pid_root)
     with open(pid_path, 'w+') as f:
@@ -424,7 +440,8 @@ def get_active_status():
 
 def is_already_active():
     """
-    Check to determine if there is already an active instance of Audit Logger running in the background
+    Check to determine if there is already an active
+    instance of Audit Logger running in the background
     """
     if os.path.isfile(pid_path):
         return True
@@ -461,7 +478,9 @@ def client(*queries: List[Query]):
     submit queries, then block on response.
     Returns list of QueryResponse objects
     """
-    client = Client(('127.0.0.1', 6600), authkey=os.environ.get("AUDIT_LOGGER_AUTH",b'auditlogger'))
+    client = Client(('127.0.0.1', 6600),
+                    authkey=os.environ.get("AUDIT_LOGGER_AUTH",
+                                           b'auditlogger'))
     rsp = []
     for query in queries:
         client.send(query)
@@ -470,7 +489,8 @@ def client(*queries: List[Query]):
     return rsp
 
 
-def start_logging(logs: List[Logger], schema: Schema, detached:bool= True):
+def start_logging(logs: List[Logger], schema: Schema,
+                     opts: MutableMapping, detached:bool= True):
     """
     Initite Logging process.
     If detached is true, process is daemonized.
@@ -484,13 +504,17 @@ def start_logging(logs: List[Logger], schema: Schema, detached:bool= True):
             __loggers_stop = True
             notifier.notify_all()
     try:
-        listener = Listener(('127.0.0.1',6600), authkey=os.environ.get("AUDIT_LOGGER_AUTH",b'auditlogger'))
+        listener = Listener(('127.0.0.1',6600),
+                            authkey=os.environ.get("AUDIT_LOGGER_AUTH",
+                                                   b'auditlogger'))
         notifier = threading.Condition(threading.Lock())
         logdaemon = LoggerDaemon(threading.RLock())
-        am = AuditManager(logdaemon, schema)
+        am = AuditManager(logdaemon, schema, opts['root'],
+                          opts['tail'], opts['timeout'])
         tp = []
         for log in logs:
-            tp.append(threading.Thread(target=log.start_logging, args=[notifier, logdaemon]))
+            tp.append(threading.Thread(target=log.start_logging,
+                                       args=[notifier, logdaemon]))
             tp[-1].start()
         am.start()
         while(True):
@@ -499,7 +523,7 @@ def start_logging(logs: List[Logger], schema: Schema, detached:bool= True):
                     if query.STOP:
                         conn.send(0)
                         break
-                    conn.send(am.query(query))
+                    conn.send(drive_query(am, query, ))
     finally:
         # effect graceful exit
         clean_pid_file()
@@ -517,8 +541,25 @@ def build_logs(conf: MutableMapping[str, Any]):
     file.
     """
     name = conf["log_name"]
-    root = conf.get("root", os.path.join(os.environ.get("HOME"), ".logaudit", "store"))
     logs = conf.get("logs", None)
+
+    def process_opts(conf):
+        defaults = {
+            'root': os.path.join(os.environ.get("HOME"), ".logaudit", "store"),
+            'tail': True,
+            'timeout': 1.0
+        }
+        defaults_set = defaults.keys()
+        opts = MutableMapping()
+        for opt in (conf.keys() - set(['logs', 'log_name'])):
+            if opt in defaults_set:
+                defaults_set.remove(opt)
+            opts[opt] = conf[opt]
+        for opt in defaults_set:
+            opts[opt] = defaults[opt]
+        return opts
+
+    opts = process_opts(conf)
     if not logs:
         raise AuditLoggerError("ParseError: Logs attribute required, not found")
     full_logs = []
@@ -539,5 +580,5 @@ def build_logs(conf: MutableMapping[str, Any]):
     schema_conf = conf.get("schema")
     if not schema_conf:
         raise AuditLoggerError("ParseError: Improperly formatted conf, a schema is required")
-    schema = Schema(schema_conf, name, root)
-    return full_logs, schema
+    schema = Schema(schema_conf, name)
+    return full_logs, schema, opts

@@ -1,8 +1,11 @@
 log_name = "gdk"
+
 # Optional root level options:
 #
 # root: str= the root of the log store created by log auditor
 # tail: bool= if specified, logs will be tailed, rather than head
+# timeout: int= the amount of time after which a query will be terminated with current results
+
 [logs]
 root = "/tmp/gitlab-development-environment"
     [logs.std]
