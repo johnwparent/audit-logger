@@ -91,3 +91,11 @@ Status - gives status of audit logger process
 C - command form, allows user to issue auditing queries of the logs based on the attributes specified in the schema.
     Output is piped to stdout of process issuing command.
     Queries are of the form: `Q key=val;key2=val2` or `Q schema_relator=<val>`
+
+
+Notice
+======
+There are some small active developments being made in the name of performance (particularly surrouding querying)
+
+Further, the query interface is by no means final, and is currently built to serve as a first pass proof of concept with a more
+sophisticated lookup interface being the end goal, driven by user feedback.
