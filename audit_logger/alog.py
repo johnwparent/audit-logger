@@ -31,7 +31,7 @@ class AuditLoggerError(RuntimeError):
     pass
 
 
-class QueryResponse(object):
+class QueryResponse:
     """
     Representation of response from Log Auditor
     with all log messages matching the requested attributes
@@ -43,7 +43,7 @@ class QueryResponse(object):
         return "\n".join(self.messages)
 
 
-class Query(object):
+class Query:
     """
     A user created query specified by CL. Defined by schema:
     <log_attibute>=<value>
@@ -86,7 +86,7 @@ class LogMetaData(dict):
     pass
 
 
-class Message(object):
+class Message:
     """
     Represents one Log message
     """
@@ -105,7 +105,7 @@ class Message(object):
         return None
 
 
-class Schema(object):
+class Schema:
     """
     Representation of the audited log schema on the local filesystem
     Relates user defined schema to file system location, relates log
@@ -185,7 +185,7 @@ class Schema(object):
         return os.path.join(log_glob_str,"aggregate.log")
 
 
-class LoggerDaemon(object):
+class LoggerDaemon:
     """
     Logger Daemon recieveing and all individual log messages
     from the loggers themselves
@@ -236,7 +236,7 @@ class LoggerDaemon(object):
                 return None
 
 
-class Logger(object):
+class Logger:
     """
     Representation of a log file
     Stores fs location, log formatting,
@@ -279,7 +279,7 @@ class Logger(object):
                     daemon.capture_message(new_message)
 
 
-class AuditManager(object):
+class AuditManager:
     """
     Reads from log aggregation endpoint, indexes and provides
     storage for the logs, as well as a runtime interface to query the logs.

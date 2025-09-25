@@ -1,7 +1,7 @@
 import argparse
 from posixpath import commonpath
 import sys
-import toml
+import tomllib
 from typing import Any, List
 
 from . import alog
@@ -70,7 +70,7 @@ def main(argv: List[Any] = None):
         else:
             exit(alog.client(["STOP"]))
     else:
-        toml_logger_conf = toml.load(cmd_line.conf)
+        toml_logger_conf = tomllib.load(cmd_line.conf)
         logs, schema = alog.build_logs(toml_logger_conf)
         alog.start_logging(logs, schema, cmd_line.detached)
 
